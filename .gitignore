@@ -31,3 +31,8 @@ vignettes/*.pdf
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
+
+
+# Hiding my credentials file
+credentials/credentials.csv
+.Rproj.user

@@ -1,2 +1,2 @@
-# sfx_price_compare
-price comparison tool for amazon and ebay. using type-2 slowly changing dimensions.
+# sfx_price_scraper
+price scraper. using amazon product advertising API. storing in type-2 slowly changing dimensions database in AWS.
