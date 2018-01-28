@@ -31,8 +31,8 @@
     
     
     # to pick up where we left off
-    window_start <- 109  
-    
+    # window_start <- 109  
+    window_start <- 1
     
     # start outer loop
     for(i in window_start:nrow(df_pricewindows)) {

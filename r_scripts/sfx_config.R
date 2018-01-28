@@ -34,3 +34,13 @@ tbl_stage <- "asin_stage01"
 tbl_fact  <- "asin_fact01"
 tbl_list  <- "asin_list01"
 
+
+
+# relative file paths ---------------------------------------------------------------------------------------
+
+path_to_asin_input   <- 'r_scripts/manual_entry_input/manual_selections.csv'
+path_to_asin_output  <- 'r_scripts/manual_entry_output/manual_selections.csv'
+
+
+
+

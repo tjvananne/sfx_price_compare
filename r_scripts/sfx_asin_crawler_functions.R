@@ -102,9 +102,6 @@ amz_itemsearch_request <- function(p_access_key, p_secret, p_minprice, p_maxpric
 
 
 
-
-
-
 # isolate total number of pages from api itemsearch request
 amz_itemsearch_find_total_pgs <- function(p_itemsearch_response) {
   
@@ -253,7 +250,7 @@ amz_itemsearch_parse <- function(p_itemsearch_response) {
     
 
 
-# DATABASE FUNCTIONS -------------------------------------------------------------------
+# DATABASE FUNCTIONS - STAGING ASINS -------------------------------------------------------------------
 
 
 # relies on data read in from config file (credentials.csv)
@@ -392,4 +389,99 @@ kill_and_fill_stage_page <- function(p_con, p_asin_to_stage) {
     })
     
 }
+
+
+# DATABASE FUNCTIONS - DECIDING WHAT TO TRACK --------------------------------------------------------------------------
+
+
+# build and write out the file to manually decide which ASIN we want to track
+prepare_manual_asin_output <- function(p_con) {
+    # external varaibles this depends on:
+    # - tbl_list
+    # - tbl_stage
+    # - path_to_asin_output
+    
+    
+    # this function steps: 
+    # - read from stage where not in list
+    # - build the output file for manual selections
+    # - write the file out to a location specified in the config file
+    
+    # pull in rows from stage that aren't in list table
+    asin_in_stage_not_in_list <- DBI::dbGetQuery(con, statement = 
+                                                     paste0("SELECT * FROM ", tbl_stage, " WHERE ASIN NOT IN (SELECT ASIN FROM ", tbl_list, ")")
+    )
+    
+    # format the output file how we want (including an external link)
+    url_detail_root <- "https://www.amazon.com/dp/"
+    asin_to_be_decided <- asin_in_stage_not_in_list %>%
+        dplyr::select(ASIN, Product_Title, Product_Price) %>%
+        dplyr::mutate(
+            Product_Price_cln = paste0("$", as.character(Product_Price / 100)),
+            Link = paste0(url_detail_root, ASIN),
+            Track_This = '',
+            Product_Price = Product_Price
+        ) %>%
+        dplyr::select(ASIN, Product_Title, Product_Price_cln, Track_This, Link, Product_Price)
+    
+    # now write it out:
+    write.csv(asin_to_be_decided, file=path_to_asin_output, row.names = F)
+    
+}
+
+
+# after manually selecting which ASIN to track, this updates list / fact table accordingly
+process_manual_asin_input <- function(con) {
+    
+    # steps for this function:
+    # - read in the manual selection file (also from a path listed in config)
+    # - filter it the way I want it
+    # - split it into the two files: going into list (all) then a subset for going into fact (Track_This == 'Y')
+    # - execute the database queries inside of a transaction
+    
+    # this relies on these external entities:
+    # - path_to_asin_input
+    # - tbl_list
+    # - tbl_fact
+    
+    if(!file.exists(path_to_asin_input)) {stop("The input file isn't there...")}
+    
+    asin_selections <- read.csv(file=path_to_asin_input, strip.white = T, stringsAsFactors = F)
+    asin_selections <- asin_selections[asin_selections$Track_This != '', ]
+    asin_selections$Epoch_Time <- time_since_epoch()
+    
+    
+    # set up the datasets for list / fact
+    asin_into_list <- asin_selections[, c("ASIN", "Epoch_Time", "Track_This")]
+    asin_to_be_tracked <- asin_selections %>%
+        dplyr::filter(Track_This == 'Y') %>%
+        dplyr::mutate(
+            Price_Eff_Start = Epoch_Time,
+            Price_Eff_End = paste0(rep(9, 10), collapse=''),
+            Is_Current = 'Y') %>%
+        dplyr::select(ASIN, Product_Price, Price_Eff_Start, Price_Eff_End, Is_Current)
+    
+    # now set up the transaction for database stuff
+    DBI::dbWithTransaction(con, code = {
+        
+        # add into list
+        if(nrow(asin_into_list) > 0) { 
+            DBI::dbExecute(con, statement=DBI::sqlAppendTable(con, tbl_list, asin_into_list))
+        }
+        
+        # add into fact
+        if(nrow(asin_to_be_tracked) > 0) {
+            DBI::dbExecute(con, statement=DBI::sqlAppendTable(con, tbl_fact, asin_to_be_tracked))
+        }
+    })
+}
+
+
+
+
+# KEEPING UP WITH TRACKING ASINS FUNCTIONS ------------------------------------------------------------------------------
+
+
+# these are going to be the functions
+
 

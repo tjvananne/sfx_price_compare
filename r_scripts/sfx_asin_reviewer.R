@@ -6,10 +6,18 @@
 # to track pricing for that ASIN or not. that file is the output of this script.
 
 
+source("r_scripts/sfx_config.R")
+source("r_scripts/sfx_asin_crawler_functions.R")
+
+con <- connect_to_db()
 
 
-list.files("using_API/01_asin_crawler")
-source("using_API/01_asin_crawler/sfx_asin_crawler_functions.R")
+prepare_manual_asin_output(con)
+
+
+process_manual_asin_input(con)
+
+
 
 
 

@@ -36,3 +36,8 @@ vignettes/*.pdf
 # Hiding my credentials file
 credentials/credentials.csv
 .Rproj.user
+
+
+# Not important to load manual output/input files
+r_scripts/manual_entry_output/*.csv
+r_scripts/manual_entry_input/*.csv
