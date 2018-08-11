@@ -16,7 +16,8 @@ library(XML)
 
 
 creds      <- read.csv('credentials/credentials.csv', stringsAsFactors = F)
-cred_env   <- creds$env == 'dev'  # <-- change this here to isolate credentials for an environment
+# cred_env   <- creds$env == 'dev'  # <-- change this here to isolate credentials for an environment
+cred_env   <- creds$env == 'local'  # <-- change this here to isolate credentials for an environment
 db_name    <- creds$db_name[cred_env]
 db_user    <- creds$db_user[cred_env]
 db_pw      <- creds$db_pw[cred_env]
