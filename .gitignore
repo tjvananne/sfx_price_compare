@@ -35,6 +35,8 @@ vignettes/*.pdf
 
 # Hiding my credentials file
 credentials/credentials.csv
+credentials/*
+
 .Rproj.user
 
 

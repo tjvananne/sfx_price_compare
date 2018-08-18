@@ -1,1 +1,0 @@
-This is where output lands for me to manually decide if it is something that I want to track the price of. (CSV format).

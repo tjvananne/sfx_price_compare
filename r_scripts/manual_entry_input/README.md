@@ -1,1 +1,0 @@
-this is where I save the file where I made the selections for whether I want to track this ASIN or not. I'll read in this file, then filter down to only the records that have an answer as to whether they should be tracked or not, then I handle them accordingly.

@@ -1,1 +1,0 @@
-ALTER TABLE gpu_price MODIFY Title varchar(250) NULL;
