@@ -1,0 +1,1 @@
+Rscript r_scripts/scrape_gpu.R

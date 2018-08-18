@@ -1,0 +1,36 @@
+1. manually create a list of GPUs I want to monitor (xlsx/csv - xlsx for conditional duplicate data finding)
+All this really needs to include is ASIN
+continuously sort by ASIN in ascending order to make sure there are no dupes
+
+actually, instead of manually doing this, downselect the facets on the left of the amazon page until you get a reasonable number
+of pages of hits (maybe like under 8-10 pages of results)
+Then, page scrape for ASINs
+
+
+
+2. Set up a script to ping amazon API for this list of ASINs (a few times per day?)
+if this is the first time run of the script - then load all data into a "final" table
+in all other instances, use this logic:
+
+for each ASIN in the csv/xlsx:
+    SQL Select in the final table for this ASIN:
+        if this ASIN doesn't exist in final table (zero rows returned), then just hit the API and load it into the final table
+        if this ASIN does exist in table, then hit the API and compare the price to what is found in the final table (compare all price fields including offers)
+            if the price from the API is missing or isn't numeric, then add this record to the error table
+            if the price from the API is the same as the final table, then update the timestamp and price in the "last price" table (kill/fill - update, don't insert.)
+            if the price from the API is different than the final table, insert a new row in the final table with the new price and new timestamp (this is the goal)
+
+Normally, I would want to split off dimension of each product, but I'm a little curious to see how often these change as well, so let's keep all
+that stuff in the final table as well! It shouldn't be that big of a table. The slowly changing dimension is definitely price though. If something
+about the item changes (description, rating, etc.) then that won't necessarily add a new row to the final table. Only a price change will add
+something new to the final table.
+
+
+
+
+
+
+
+
+
+
