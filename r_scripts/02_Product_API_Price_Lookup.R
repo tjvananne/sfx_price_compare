@@ -244,6 +244,7 @@ library(lubridate)
         
     
     # replacement for sqlAppendTable
+    # I had to implement this myself, but DBI's sqlAppendTable() function has issues
     db_sql_append_table <- function(p_df, p_tbl) {
         # p_df: data.frame that contains the data to append/insert into the table
         # the names must be the same as those in the database
@@ -321,60 +322,41 @@ library(lubridate)
     # db_list_tables(p_conn=conn, p_database=db_secret$database)    
     
     
-    db_drop_table <- function(p_conn, p_tbl) {
-        # p_conn: odbc connection to the database
-        # p_tbl: table name of the table you want to drop
-        dbExecute(conn=p_conn, statement=  gsub("<table_name>", p_tbl, "DROP TABLE dbo.<table_name>;"))
-    }
-    # db_drop_table(p_conn=conn, p_tbl="Person")
     
-    
-    
-    # # insert into database function
-    # db_insert_row <- function(p_conn, p_df, p_tbl) {
+    # # we now have a flag for "active" - this query isn't necessary
+    # # query for asin database function
+    # db_query_most_recent_by_id <- function(p_conn, p_id, p_id_value, p_date, p_tbl, p_verbose=T) {
     #     # p_conn: connection to the database
-    #     # p_df: data.frame of the fields we want to append to the df table
-    #     # p_tbl: table in the database we want to append to
-    #     DBI::dbExecute(conn = p_conn, DBI::sqlAppendTable (
-    #         con    = p_conn, 
-    #         table  = p_tbl,
-    #         values = p_df))
+    #     # p_id: the name of the id we're grouping by to find max date
+    #     # p_id_value: id (asin) number we want to look up in the database
+    #     # p_date: date (or epoch timestamp) we want to use in order to pull most recent data for this id
+    #     # p_tbl: database table we're querying
+    #     
+    #     # note: this query was designed with MySQL in mind
+    #     
+    #     # query: given a unique identifier (ASIN), give me the most recent record for that id
+    #     # this is what we'll use to compare to the price coming straight from the API
+    #     sql_statement <- sprintf(
+    #     "SELECT *
+    #      FROM %s tbl1
+    #         JOIN (
+    #         SELECT %s, MAX(%s) as %s
+    #         FROM %s
+    #         WHERE %s = '%s' 
+    #         GROUP BY %s) AS tbl2
+    #         ON tbl1.%s = tbl2.%s AND tbl1.%s = tbl2.%s;",
+    #     p_tbl, p_id, p_date, p_date, p_tbl, p_id, p_id_value, p_id, p_id, p_id, p_date, p_date)
+    #     
+    #     # print out the statement
+    #     if(p_verbose) {
+    #         print("SQL Statement:")
+    #         print(sql_statement)
+    #     }
+    #     
+    #     # execute query
+    #     this_result <- DBI::dbGetQuery(conn=p_conn, statement = sql_statement)
+    #     return(this_result)
     # }
-    
-    
-    # query for asin database function
-    db_query_most_recent_by_id <- function(p_conn, p_id, p_id_value, p_date, p_tbl, p_verbose=T) {
-        # p_conn: connection to the database
-        # p_id: the name of the id we're grouping by to find max date
-        # p_id_value: id (asin) number we want to look up in the database
-        # p_date: date (or epoch timestamp) we want to use in order to pull most recent data for this id
-        # p_tbl: database table we're querying
-        
-        # note: this query was designed with MySQL in mind
-        
-        # query: given a unique identifier (ASIN), give me the most recent record for that id
-        # this is what we'll use to compare to the price coming straight from the API
-        sql_statement <- sprintf(
-        "SELECT *
-         FROM %s tbl1
-            JOIN (
-            SELECT %s, MAX(%s) as %s
-            FROM %s
-            WHERE %s = '%s' 
-            GROUP BY %s) AS tbl2
-            ON tbl1.%s = tbl2.%s AND tbl1.%s = tbl2.%s;",
-        p_tbl, p_id, p_date, p_date, p_tbl, p_id, p_id_value, p_id, p_id, p_id, p_date, p_date)
-        
-        # print out the statement
-        if(p_verbose) {
-            print("SQL Statement:")
-            print(sql_statement)
-        }
-        
-        # execute query
-        this_result <- DBI::dbGetQuery(conn=p_conn, statement = sql_statement)
-        return(this_result)
-    }
     
         # # unit test
         # db_query_most_recent_by_id(
@@ -425,113 +407,118 @@ library(lubridate)
         # check_if_df_vals_changed(df1, df3, c("a", "b"))
         # check_if_df_vals_changed(df1, df4, c("a", "b"))
         
-    
-    # db_delete_table_contents <- function(p_conn, p_tbl) {
-    #     # p_conn: connection to database
-    #     # p_tbl: database table name
-    #     
-    #     sql_statement <- sprintf("DELETE FROM %s", p_tbl)
-    #     dbExecute(conn = p_conn, statement = sql_statement)
-    # }
-    
-        # # Unit test
-        # db_delete_table_contents(conn, "gpu_price")    
-    
-    
-    # db_create_table <- function(p_conn, p_tbl) {
-    #     # Targeting MS SQL Server
-    #     # p_conn: connection to database
-    #     # p_tbl: name of table to create
-    #     
-    #     
-    #     # https://stackoverflow.com/questions/175415/how-do-i-get-list-of-all-tables-in-a-database-using-tsql
-    #     print(dbExecute(conn=p_conn, statement=
-    #         "SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE';"))
-    #     
-    #     dbExecute(conn=p_conn, statement=
-    #     "CREATE TABLE Personstwo (
-    #         PersonID int,
-    #         LastName varchar(255),
-    #         FirstName varchar(255),
-    #         Address varchar(255),
-    #         City varchar(255) 
-    #     );")
-    #     
-    # }
-    
-    
-    
+
 
 
 # Execution Loop ------------------------------------------------------------------------
 
 
-
+#' Steps
+#' 1. Read from ASIN table
+#' 2. pass i'th ASIN into the product API and parse
+#' 3. over-write the Amz_Product table with the freshest dimension data available
+#'     (eventually keep slowly changing dimensions here? - not sure how interesting that would be)
+#' 4. query Amz_ListPrice (and all other price fact tables) where Is_Active flag is a 1
+#'     (might make more sense to query this table once for all active records instead of
+#'     once for each individual ASIN...)
+#' 5. compare values for the field that that fact table records. New list price vs existing active
+#'    list price. New used price vs existing used price. We can start with list price and 
+#'    implement these one at a time. Ideally, there would be one function that can dynamically
+#'    handle any of these comparisons
+#'        - this comparison should be able to handle empty values in the Amz_ListPrice / price tables
+#' 6. If a value has changed (is different from the existing Is_Active == 1 record), then
+#'    begin a transaction: set existing Is_Active flag to 0, insert the new row, set the
+#'    new Is_Active flag to 1, commit the transaction
+#'        - Could eventually write some stored procedures for this, but for now I'd like all
+#'          logic to live in one place so I can maintain it here.
     
     
+# These steps are missing the ASIN -> ASIN_id surrogate key lookups
+# ASIN_id is what ties all the tables together, but ASIN is the natural
+# key that will be used to lookup the ASIN_id
+# I've included the natural key in all tables that use ASIN_id to make
+# table resets a little easier (at least while actively developing)
+    
+    
+# query the ASIN table
+tbl_ASIN <- dbGetQuery(conn = conn, statement = "SELECT * FROM ASIN;")
+    
+# I don't think this is necessary at this point, but just doing it to inspect
+tbl_Amz_Product <- dbGetQuery(conn = conn, statement = "SELECT * FROM Amz_Product;")
+    
+# query the Amz_ListPrice table for all active records (will be blank first time)
+tbl_Amz_ListPrice <- dbGetQuery(conn = conn, statement = 
+                     "SELECT * FROM Amz_ListPrice 
+                      WHERE ListPrice_IsActive = 1;")
 
-
+# begin the loop here to pass ASINs into the Amz API, compare with existing active records, and update as necessary
+for(i in 1:nrow(tbl_ASIN)) {
+    print(i)
+}
 
     
-    # loop through list of GPUs to track
-    for(i in 10:nrow(GPUs)) {
-        
-        # isolate one asin at a time
-        this_asin <- GPUs$ASIN[i]
-        print(paste0("iteration: ", i, "   ASIN: ", this_asin))
-        
-        
-        # 0) hit Amazon api for this asin
-        args(amz_itemlookup_request)
-        this_item_lookup <- amz_itemlookup_request(
-            p_access_key   = amz_secret$amz_accesskey,
-            p_secret       = amz_secret$amz_secret,
-            p_associatetag = amz_secret$amz_associatetag,
-            p_ASIN         = this_asin,
-            p_responsegrp  = "ItemAttributes,Offers")
-        
-        this_item_lookup_parsed <- amz_itemlookup_parse(this_item_lookup)
-        
-        
-        # 1) SQL select in final table for this ASIN (isolate to most recent row of data)
-        this_most_recent_record <- db_query_most_recent_by_id(
-            p_conn     = conn,
-            p_id       = "ASIN",
-            p_id_value = this_asin,
-            p_date     = "EffTimestampUTC",
-            p_tbl      = "gpu_price")
-        
-        
-        # if no record of this ASIN, just put it in the table
-        if(nrow(this_most_recent_record) < 1) {
-            
-            db_insert_row(
-                p_conn  = conn,
-                p_df    = this_item_lookup_parsed,
-                p_tbl   = "gpu_price")
-            
-        } else {
-            # there was data, so compare database value to amazon result
-            names(this_item_lookup_parsed)
-            
-            something_changed <- check_if_df_vals_changed(
-                p_df1 = this_item_lookup_parsed,
-                p_df2 = this_most_recent_record,
-                p_cols = c("ListPrice", "LowestNewPrice", "LowestUsedPrice", "LowestRefurbPrice"))
-            
-                
-            if(something_changed) {
-                db_insert_row(
-                    p_conn  = conn,
-                    p_df    = this_item_lookup_parsed,
-                    p_tbl   = "gpu_price")
-            }
-            
-        }   
-        
-        # sleep for 2 - 16 seconds (choose at random from a uniform distribution)
-        Sys.sleep(runif(1, 2, 16))
-    }
+
+# Old Execution loop for reference ------------------------------------------------------
+    
+    # # loop through list of GPUs to track
+    # for(i in 10:nrow(GPUs)) {
+    #     
+    #     # isolate one asin at a time
+    #     this_asin <- GPUs$ASIN[i]
+    #     print(paste0("iteration: ", i, "   ASIN: ", this_asin))
+    #     
+    #     
+    #     # 0) hit Amazon api for this asin
+    #     args(amz_itemlookup_request)
+    #     this_item_lookup <- amz_itemlookup_request(
+    #         p_access_key   = amz_secret$amz_accesskey,
+    #         p_secret       = amz_secret$amz_secret,
+    #         p_associatetag = amz_secret$amz_associatetag,
+    #         p_ASIN         = this_asin,
+    #         p_responsegrp  = "ItemAttributes,Offers")
+    #     
+    #     this_item_lookup_parsed <- amz_itemlookup_parse(this_item_lookup)
+    #     
+    #     
+    #     # 1) SQL select in final table for this ASIN (isolate to most recent row of data)
+    #     this_most_recent_record <- db_query_most_recent_by_id(
+    #         p_conn     = conn,
+    #         p_id       = "ASIN",
+    #         p_id_value = this_asin,
+    #         p_date     = "EffTimestampUTC",
+    #         p_tbl      = "gpu_price")
+    #     
+    #     
+    #     # if no record of this ASIN, just put it in the table
+    #     if(nrow(this_most_recent_record) < 1) {
+    #         
+    #         db_insert_row(
+    #             p_conn  = conn,
+    #             p_df    = this_item_lookup_parsed,
+    #             p_tbl   = "gpu_price")
+    #         
+    #     } else {
+    #         # there was data, so compare database value to amazon result
+    #         names(this_item_lookup_parsed)
+    #         
+    #         something_changed <- check_if_df_vals_changed(
+    #             p_df1 = this_item_lookup_parsed,
+    #             p_df2 = this_most_recent_record,
+    #             p_cols = c("ListPrice", "LowestNewPrice", "LowestUsedPrice", "LowestRefurbPrice"))
+    #         
+    #             
+    #         if(something_changed) {
+    #             db_insert_row(
+    #                 p_conn  = conn,
+    #                 p_df    = this_item_lookup_parsed,
+    #                 p_tbl   = "gpu_price")
+    #         }
+    #         
+    #     }   
+    #     
+    #     # sleep for 2 - 16 seconds (choose at random from a uniform distribution)
+    #     Sys.sleep(runif(1, 2, 16))
+    # }
     
     
     
