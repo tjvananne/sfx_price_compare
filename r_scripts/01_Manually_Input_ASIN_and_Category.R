@@ -1,121 +1,185 @@
 
+#' This is looking good. Next step will be to 
 
 
+
+# set up ----------------------------------------------------------------------------------
 library(dplyr)
 library(odbc)
 library(DBI)
 library(lubridate)
 
+db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
+
+# which environment - create the connection
+db_secret <- db_secret[db_secret$env == "dev", ]
+conn = DBI::dbConnect(odbc::odbc(),
+                      Driver = "ODBC Driver 17 for SQL Server",
+                      Server = db_secret$server,
+                      Database = db_secret$database,
+                      UID = db_secret$user_id,
+                      PWD = db_secret$password,
+                      Port = db_secret$port)
+
+ 
+# notes for how these functions should work --------------------------------------------------
+
+# This function touches these tables:
+    # ASIN
+    # ASIN_Category
+    
+# Function steps:
+    # if the ASIN passed exists within the ASIN table
+        # if it exists in ASIN_Category (Use that ASIN_id associated with it to look up)
+            # If exists in ASIN_Category with the same Category1 and Category2 value the user is trying to enter it as
+                # return an error message saying that already exists
+            # else: insert the ASIN with the Category values and ASIN_id into ASIN_Category
+        # else: insert the ASIN with Category values and ASIN_id into ASIN_Category
+    # else: insert the ASIN into the ASIN table then insert the ASIN with Category values and ASIN_id into ASIN_Category
+    
 
 
-# load in password info -------------------------------------------
-    
-    db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
-    
-    # which environment - create the connection
-    db_secret <- db_secret[db_secret$env == "dev", ]
-    conn = DBI::dbConnect(odbc::odbc(),
-                          Driver = "ODBC Driver 17 for SQL Server",
-                          Server = db_secret$server,
-                          Database = db_secret$database,
-                          UID = db_secret$user_id,
-                          PWD = db_secret$password,
-                          Port = db_secret$port)
+# functions -----------------------------------------------------------------------------------
 
-  
-# database functions -------------------------------------------------
-        
+# helper function for inserting into the ASIN_Category table
+db_insert_into_ASIN_Category <- function(p_conn, p_ASIN_id, p_ASIN, p_Cat1, p_Cat2, p_Cat3=NULL) {
     
-db_insert_into_ASIN <- function(p_conn, p_ASIN, p_Cat1, p_Cat2=NULL, p_Cat3=NULL) {
-    
-    if(!is.null(p_Cat2) & !is.null(p_Cat3)) {
+    if(!is.null(p_Cat3)) {
         dbExecute(conn=p_conn, statement=
-            paste0("INSERT INTO ASIN (ASIN, Category1, Category2, Category3)
-            VALUES ('", p_ASIN, "','", p_Cat1, "','", p_Cat2, "','", p_Cat3, "');"))
-    } else if (!is.null(p_Cat2) & is.null(p_Cat3)) {
-        dbExecute(conn=p_conn, statement=
-            paste0("INSERT INTO ASIN (ASIN, Category1, Category2)
-            VALUES ('", p_ASIN, "','", p_Cat1, "','", p_Cat2, "');"))
-        
-    } else if (is.null & is.null) {
-        dbExecute(conn=p_conn, statement=
-            paste0("INSERT INTO ASIN (ASIN, Category1)
-            VALUES ('", p_ASIN, ");"))
+                      paste0(
+                          "INSERT INTO ASIN_Category (ASIN_id, ASIN, Category1, Category2, Category3)
+                VALUES (", p_ASIN_id, ",'", p_ASIN, "','", p_Cat1, "','", p_Cat2, "','", p_Cat3, "');"))
     } else {
-        stop("An error occurred")
+        dbExecute(conn=p_conn, statement=
+                      paste0(
+                          "INSERT INTO ASIN_Category (ASIN_id, ASIN, Category1, Category2)
+                VALUES (", p_ASIN_id, ",'", p_ASIN, "','", p_Cat1, "','", p_Cat2, "');"))
     }
-    
 }
 
-    
-    
-# will have to figure something out about Reverb/Delay combo pedals...
-db_insert_into_ASIN(conn, "B074VDY8FM", "Guitar Pedal", "Reverb")
 
-dbGetQuery(conn=conn, "SELECT * FROM ASIN")
+db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Category3=NULL) {
+    
+    # p_conn: connection to database
+    # p_ASIN: the ASIN (amazon ID) for this product ("B0719CBYXJ")
+    # p_Category1: the highest-level category to assign to this product ("Guitar Pedal")
+    # p_Category2: the next level category to assign to this product ("Reverb")
+    # p_Category3: an optional argument to assign an even more detailed category to the product
+    
+    # Notes: the ASIN_Category table constrains unique values to these cols:
+        # ASIN
+        # Category1
+        # Category2
+        # So, for example: You can have the same ASIN in the table, as long as either 
+        # category1 or category2 are different values. I did this because of obvious
+        # overlaps in guitar pedal types. There are many "reverb / delay" pedals and
+        # I want both of these to be searchable without forcing awkward "Reverb & Delay" 
+        # categories.
     
     
-# NOTES -------------------------------------------------------------------------------
+    # browser()
+    # # parameters to function
+    # p_conn      <- conn
+    # p_ASIN      <- "B0719CBYXJ"
+    # p_Category1 <- "Guitar Pedal"
+    # p_Category2 <- "Reverb"
+    # p_Category3 <- NULL # default this arg to NULL
+    
+    # inside function:
+    this_ASIN <- dbGetQuery(p_conn, 
+        statement = paste0(
+            "SELECT TOP 1 ASIN_id, ASIN
+            FROM ASIN
+            WHERE ASIN = '", p_ASIN, "';"))
     
     
-#' I should write a shiny Gadget "Viewer" pain shiny app for inputing these ASINs...
-#' It would warn me whenever I tried to input one that was already in the database. "Fail gracefully"
-#' 
-#' I could then work on packaging it up into an electron desktop application that had a full
-#' admin-panel page for connecting to a database and populating it with values in the manual
-#' entry database tables.
-#' 
-#' For the desktop version, I would have to just create a very hardcoded thing to look for
-#' code updates. If the github latest hash value has changed, it will automatically update
-#' when the user next opens the app. (how to know exactly how many scripts we'll need to 
-#' check for? Will we ever need additional scripts? Can we make it flexible enough to 
-#' know that it will need to check for additional scripts in the future? Can it just check
-#' for all scripts in a certain directory? Run, load, source all of those scripts in that
-#' one directory, then it becomes flexible.) The desktop version would just utilize APIs that
-#' the web and mobile version would also be "hitting" to get their data and responses and html
-#' to render. This may require some native wrapper packages for Android and iOS.
-#' 
-#' Using electron JS to build a shiny desktop application
-#' https://www.youtube.com/watch?v=O56WR-yQFC0&index=2&t=16s&list=LL9Nk6lDyvEIT0cUx9odwBHg
-#' Build a page of this app that will edit it's own config file, then when you close
-#' and restart the app next, it will pick up the config changes and adapt.
-#' 
-#' If you build a product:
-#' 
-#' https://github.com/ficonsulting/RInno  (repo specifically for creating desktop apps from r shiny)
-#' This would be able to allow for user login, then check a database to see if the user is active 
-#' (has paid) within the last 30 days (like 50c) and not let them on unless they're active.
-#' 
-#' If you build this product and let it be free, and use it to collect anonymous data on the
-#' users (or maybe not anonymous if they consent), you could use that data to build very
-#' interesting models. You could start tapping into the data that giants like Amazon already
-#' have. Become the middle man that people turn to before visiting Amazon, or Guitar center, or
-#' wherever. Tap into the stream of people who are price consious, but don't have the time or
-#' tech savvy to track prices effectively on their own (without maybe purchasing a product or
-#' using a site with excessive advertisements and creepy cookie agreements and bad UI).
-#' 
-#' This is an area ripe for differentiation.
-#' 
-#' Build it for free, collect data, build machine learning models on user behavior (with
-#' their consent). People aren't creeped out by innocent recommendations anymore. They've
-#' come to expect it with many of their digital products now. Facebook suggests new friends.
-#' Amazon suggests similar products based on your behaviour in the past. Google stores cookies
-#' based on your queries that can then show up as Google-based ads on various websites for 
-#' the exact item you queried hours before.
-#' 
-#' 
-#' Build in a community ASIN entering box. Show them how to find the product's ASIN. Show
-#' them how to copy it into the box and press "ENTER". Tell them what an error message
-#' would look like if they tried to enter an ASIN that already exists in our database
-#' tables. If it isn't, do some obvious checks to make sure it actually is a possible
-#' ASIN value. If so, pass their ASIN on to a query to the product advertising API and
-#' look at it's results. If it doesn't appear to be a valid AMAZON-returned "type" or
-#' category or whatever, then cache that result into one of our tables and tell the user
-#' that the product will need to be inspected by a member of the SFX team.
-#' 
-#' Upon inspection, we'll manually make the decision to add it to the actual table that
-#' is used for price checking. Otherwise, it will only live in our ASIN / type cache. 
-#' eventually, it'll be really cool/interesting to have a large quantity of ASINs and
-#' their types cached. 
+    if(nrow(this_ASIN)) {
+        # exists in ASIN, now test for existence in ASIN_Category
+        this_ASIN_Category <- dbGetQuery(p_conn,
+         statement = paste0(
+             "SELECT *
+             FROM ASIN_Category
+             WHERE ASIN_id = ", this_ASIN$ASIN_id, ";"))
+        
+        if(nrow(this_ASIN_Category)) {
+            # exists in ASIN_Category - test to see if Category1 and Category2 already exist
+            data_is_new <- any(this_ASIN_Category$Category1 != p_Category1, 
+                               this_ASIN_Category$Category2 != p_Category2)
+            
+            # insert this data into ASIN_Category:
+            if(data_is_new) {
+                db_insert_into_ASIN_Category(
+                    p_conn    = p_conn,
+                    p_ASIN_id = this_ASIN$ASIN_id, 
+                    p_ASIN    = p_ASIN, 
+                    p_Cat1    = p_Category1, 
+                    p_Cat2    = p_Category2, 
+                    p_Cat3    = p_Category3)
+            } else {stop("This ASIN / Category1 / Category2 Combination already exists!")}
+            
+        } else {
+            # exists in ASIN, but not in ASIN_Category - just add it now
+            
+            # insert this data into ASIN_Category:
+            db_insert_into_ASIN_Category(
+                p_conn    = p_conn,
+                p_ASIN_id = this_ASIN$ASIN_id, 
+                p_ASIN    = p_ASIN, 
+                p_Cat1    = p_Category1, 
+                p_Cat2    = p_Category2, 
+                p_Cat3    = p_Category3)
+        }
+    } else {
+        # doesn't exist in ASIN nor ASIN_Category
+        
+        # insert into ASIN
+        dbExecute(p_conn, statement = 
+            paste0(
+                "INSERT INTO ASIN (ASIN)
+                VALUES ('", p_ASIN, "');"))
+        
+        # query for the ASIN_id
+        this_ASIN <- dbGetQuery(p_conn, 
+            statement = paste0(
+                "SELECT TOP 1 ASIN_id, ASIN
+                FROM ASIN
+                WHERE ASIN = '", p_ASIN, "';"))
+        
+        # insert into ASIN_Category:
+        db_insert_into_ASIN_Category(
+            p_conn    = p_conn,
+            p_ASIN_id = this_ASIN$ASIN_id, 
+            p_ASIN    = p_ASIN, 
+            p_Cat1    = p_Category1, 
+            p_Cat2    = p_Category2, 
+            p_Cat3    = p_Category3)
+    }
+}
+
+
+# examples for how to call this function ------------------------------------------
     
-    
+    # # 1 B0719CBYXJ Guitar Pedal    Reverb      <NA>  
+    # db_insert_new_ASIN(conn, "B0719CBYXJ", "Guitar Pedal", "Reverb")
+    # 
+    # 
+    # # ok it works.
+    # db_insert_new_ASIN(conn, "B074VDY8FM", "Guitar Pedal", "Reverb")
+    # db_insert_new_ASIN(conn, "B074VDY8FM", "Guitar Pedal", "Delay")  # <-- this should work
+    # db_insert_new_ASIN(conn, "B074VDY8FM", "Guitar Pedal", "Delay")  # <-- this should fail
+
+
+    # # doing a little data conversion from the previous schema
+    # ASIN_data <- ASIN_data %>%
+    #     filter(!ASIN %in% c("B074VDY8FM", "B0719CBYXJ"))
+    # 
+    # for(i in 1:nrow(ASIN_data)) {
+    #     
+    #     print(i)
+    #     db_insert_new_ASIN(conn, ASIN_data$ASIN[i], ASIN_data$Category1[i], ASIN_data$Category2[i])
+    #     Sys.sleep(2)
+    #     
+    # }
+
+
+

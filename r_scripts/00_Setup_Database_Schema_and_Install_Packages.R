@@ -70,14 +70,27 @@ if(!"ASIN" %in% db_list_tables(p_conn=conn, db_secret$database)) {
     "CREATE TABLE ASIN (
         ASIN_id INT NOT NULL IDENTITY(1,1) PRIMARY KEY,
         ASIN varchar(15) NOT NULL,
-        Category1 varchar(150) NOT NULL,
-        Category2 varchar(150),
-        Category3 varchar(150),
         CONSTRAINT UNQ_ASIN UNIQUE (ASIN)
     );"
                   )
 }
 
+ 
+# db_drop_table(conn, "ASIN")
+if(!"ASIN_Category" %in% db_list_tables(p_conn=conn, db_secret$database)) {
+    dbExecute(conn=conn, statement=
+    "CREATE TABLE ASIN_Category (
+        ASIN_id INT NOT NULL CONSTRAINT FK_ASIN_id_Category REFERENCES ASIN(ASIN_id),
+        ASIN varchar(15) NOT NULL,
+        Category1 varchar(150) NOT NULL,
+        Category2 varchar(150) NOT NULL,
+        Category3 varchar(150),
+        CONSTRAINT UNQ_ASIN_Category UNIQUE (ASIN, Category1, Category2));"
+    )
+}
+    
+            
+    
 # create Product table if it doesn't exist
 # db_drop_table(conn, "Amz_Product")
 if(!"Amz_Product" %in% db_list_tables(p_conn=conn, db_secret$database)) {

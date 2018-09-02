@@ -1,5 +1,7 @@
 
 
+# 2018_09_02: this script is going to require an almost entire re-write / refactoring
+
 
 library(base64enc)  # for signing amazon api requests
 library(RCurl)
