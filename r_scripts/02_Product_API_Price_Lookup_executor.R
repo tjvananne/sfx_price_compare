@@ -1,7 +1,5 @@
 
 
-# 2018_09_02: this script is going to require an almost entire re-write / refactoring
-
 
 library(base64enc)  # for signing amazon api requests
 library(RCurl)
@@ -11,7 +9,7 @@ library(dplyr)
 library(odbc)
 library(DBI)
 library(lubridate)
-# library(RMySQL)  # switched from MySQL to MS SQL Server
+
 
 
 
@@ -20,8 +18,12 @@ library(lubridate)
 amz_secret   <- read.csv("credentials/amz_secret.csv", stringsAsFactors = F)    
 db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
 
+
+source("r_scripts/lib_name_db_tables_by_env.R")
+
+
 # which environment - create the connection
-db_secret <- db_secret[db_secret$env == "dev", ]
+db_secret <- db_secret[db_secret$env == GBL_env, ]
 conn = DBI::dbConnect(odbc::odbc(),
                       Driver = "ODBC Driver 17 for SQL Server",
                       Server = db_secret$server,
@@ -29,6 +31,7 @@ conn = DBI::dbConnect(odbc::odbc(),
                       UID = db_secret$user_id,
                       PWD = db_secret$password,
                       Port = db_secret$port)
+
 
 # adhoc dev of future database functions
 
@@ -469,24 +472,22 @@ check_if_df_vals_changed <- function(p_df1, p_df2, p_cols) {
     
         
 # query the ASIN table
-tbl_ASIN <- dbGetQuery(conn = conn, statement = "SELECT * FROM ASIN;")
+tbl_ASIN <- dbGetQuery(conn = conn, statement = paste0("SELECT * FROM ", GBL_tbl_name_ASIN, ";"))
+
     
 # I don't think this is necessary at this point, but just doing it to inspect
-tbl_Amz_Product <- dbGetQuery(conn = conn, statement = "SELECT * FROM Amz_Product;")
+tbl_Amz_Product <- dbGetQuery(conn = conn, statement = paste0("SELECT * FROM ", GBL_tbl_name_Amz_Product, ";"))
     
 # query the Amz_ListPrice table for all active records (will be blank first time)
 tbl_Amz_ListPrice <- dbGetQuery(conn = conn, statement = 
-                     "SELECT * FROM Amz_ListPrice 
-                      WHERE ListPrice_IsActive = 1;")
+                     paste0(
+                        "SELECT * FROM ", GBL_tbl_name_Amz_ListPrice,  
+                        " WHERE ListPrice_IsActive = 1;"))
 
 # tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM Amz_ListPrice;")
 
 # begin the loop here to pass ASINs into the Amz API, compare with existing active records, and update as necessary
 for(i in 1:nrow(tbl_ASIN)) {
-    
-    # pieces of this for loop:
-    # 1. 
-    
     
     
     print(paste0("--------------->  ", i, "  <---------------"))
@@ -509,6 +510,7 @@ for(i in 1:nrow(tbl_ASIN)) {
     
     
     # Amz_Product table logic -------------------------------------------------------------
+    
     this_Amz_Product_data <- this_ASIN_API_data %>%
         select(
             ASIN_id,
@@ -533,7 +535,6 @@ for(i in 1:nrow(tbl_ASIN)) {
         }
     }
     
-    
     # if this ASIN is already in the Amz_Product table
     print("Updating product table...")
     if(this_ASIN_id %in% tbl_Amz_Product$ASIN_id) {
@@ -541,20 +542,16 @@ for(i in 1:nrow(tbl_ASIN)) {
         # in transaction: then delete the row and insert again with fresh data from API
         # this is not slowly changing dimension, this is an overwriting dimension
         dbWithTransaction(conn, code = {
-            dbExecute(conn, statement = paste0("DELETE FROM Amz_Product WHERE ASIN_id = ", this_ASIN_id, ";"))
-            dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, "Amz_Product"))
+            dbExecute(conn, statement = paste0("DELETE FROM ", GBL_tbl_name_Amz_Product, " WHERE ASIN_id = ", this_ASIN_id, ";"))
+            dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, GBL_tbl_name_Amz_Product))
         })
     } else {
         
         # if this ASIN_id isn't already in the data, then just insert
-        dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, "Amz_Product"))
+        dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, GBL_tbl_name_Amz_Product))
     }
     
-    
     # Amz_ListPrice logic ----------------------------------------------------------------
-    
-    # tbl_Amz_ListPrice %>% names()
-    # names(this_ASIN_API_data)
     
     this_Amz_ListPrice_data <- this_ASIN_API_data %>%
         select(
@@ -567,20 +564,22 @@ for(i in 1:nrow(tbl_ASIN)) {
     print("Updating the Amz_ListPrice table...")
     if(this_ASIN_id %in% tbl_Amz_ListPrice$ASIN_id) {
         # the ASIN_id exists already in the ListPrice table
-
+        
+        this_ListPrice <- tbl_Amz_ListPrice$ListPrice[tbl_Amz_ListPrice$ASIN_id == this_ASIN_id][[1]]
+        
         # if one is NA but the other isn't, something has changed. If prices aren't equal (!=), something has changed
-        something_changed <- xor(is.na(tbl_Amz_ListPrice$ListPrice),  is.na(this_Amz_ListPrice_data$ListPrice))
-        something_changed <- something_changed | (tbl_Amz_ListPrice$ListPrice != this_Amz_ListPrice_data$ListPrice)
+        something_changed <- xor(is.na(this_ListPrice),  is.na(as.integer(this_Amz_ListPrice_data$ListPrice)))
+        something_changed <- something_changed | (this_ListPrice != as.integer(this_Amz_ListPrice_data$ListPrice))
         if(something_changed) {
             # The price we got from the API is different than what is "Active" in the database table
             
             dbWithTransaction(conn, code = {
                 dbExecute(conn, statement = 
                     paste0(
-                        "UPDATE Amz_ListPrice
-                        SET ListPrice_IsActive = 0
+                        "UPDATE ", GBL_tbl_name_Amz_ListPrice,
+                        " SET ListPrice_IsActive = 0
                         WHERE ASIN_id = ", this_ASIN_id, ";"))
-                dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = "Amz_ListPrice"))
+                dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
             })
             
         } else {
@@ -591,8 +590,10 @@ for(i in 1:nrow(tbl_ASIN)) {
     } else {
         # the ASIN_id does not exist in this table, just do a simple insert.
         print("ListPrice record didn't exist, just insert a row...")
-        dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = "Amz_ListPrice"))
+        dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
+    
+    rm(this_ListPrice)
     
     # now sleep
     sleep_dur <- round(runif(1, min=2, max=6), 2)
@@ -600,72 +601,4 @@ for(i in 1:nrow(tbl_ASIN)) {
     Sys.sleep(sleep_dur)
 }
 
-    
-
-# Old Execution loop for reference ------------------------------------------------------
-    
-    # # loop through list of GPUs to track
-    # for(i in 10:nrow(GPUs)) {
-    #     
-    #     # isolate one asin at a time
-    #     this_asin <- GPUs$ASIN[i]
-    #     print(paste0("iteration: ", i, "   ASIN: ", this_asin))
-    #     
-    #     
-    #     # 0) hit Amazon api for this asin
-    #     args(amz_itemlookup_request)
-    #     this_item_lookup <- amz_itemlookup_request(
-    #         p_access_key   = amz_secret$amz_accesskey,
-    #         p_secret       = amz_secret$amz_secret,
-    #         p_associatetag = amz_secret$amz_associatetag,
-    #         p_ASIN         = this_asin,
-    #         p_responsegrp  = "ItemAttributes,Offers")
-    #     
-    #     this_item_lookup_parsed <- amz_itemlookup_parse(this_item_lookup)
-    #     
-    #     
-    #     # 1) SQL select in final table for this ASIN (isolate to most recent row of data)
-    #     this_most_recent_record <- db_query_most_recent_by_id(
-    #         p_conn     = conn,
-    #         p_id       = "ASIN",
-    #         p_id_value = this_asin,
-    #         p_date     = "EffTimestampUTC",
-    #         p_tbl      = "gpu_price")
-    #     
-    #     
-    #     # if no record of this ASIN, just put it in the table
-    #     if(nrow(this_most_recent_record) < 1) {
-    #         
-    #         db_insert_row(
-    #             p_conn  = conn,
-    #             p_df    = this_item_lookup_parsed,
-    #             p_tbl   = "gpu_price")
-    #         
-    #     } else {
-    #         # there was data, so compare database value to amazon result
-    #         names(this_item_lookup_parsed)
-    #         
-    #         something_changed <- check_if_df_vals_changed(
-    #             p_df1 = this_item_lookup_parsed,
-    #             p_df2 = this_most_recent_record,
-    #             p_cols = c("ListPrice", "LowestNewPrice", "LowestUsedPrice", "LowestRefurbPrice"))
-    #         
-    #             
-    #         if(something_changed) {
-    #             db_insert_row(
-    #                 p_conn  = conn,
-    #                 p_df    = this_item_lookup_parsed,
-    #                 p_tbl   = "gpu_price")
-    #         }
-    #         
-    #     }   
-    #     
-    #     # sleep for 2 - 16 seconds (choose at random from a uniform distribution)
-    #     Sys.sleep(runif(1, 2, 16))
-    # }
-    
-    
-    
-    
-    
     

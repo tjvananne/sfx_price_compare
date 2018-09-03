@@ -1,0 +1,58 @@
+run on remote server (Azure - Ubuntu 18.04)
+
+# build the key for ssh rsa
+keygen -t rsa
+
+# paste the id_rsa.pub value into the SSH rsa text box when creating the azure VM
+
+# ssh into the remote box
+ssh taylor@23.99.228.114 -i ~/.ssh/id_rsa
+
+
+# copy to home directory of taylor@23.99.228.114
+scp -i ~/.ssh/id_rsa ./r-base-core_3.5.0-1bionic_amd64.deb taylor@23.99.228.114:~
+
+
+# running commands as taylor@23.99.228.114
+sudo apt update
+sudo apt upgrade
+sudo apt install gdebi
+
+
+# install rstudio server? - from https://www.rstudio.com/products/rstudio/download-server/
+wget https://download2.rstudio.org/rstudio-server-1.1.456-amd64.deb
+sudo gdebi rstudio-server-1.1.456-amd64.deb
+
+
+RStudio Server
+ RStudio is a set of integrated tools designed to help you be more productive with R. It includes a console, syntax-highlighting editor that supports direct code execution, as well as tools for plotting, history, and workspace management.
+Do you want to install the software package? [y/N]:y
+Selecting previously unselected package rstudio-server.
+(Reading database ... 81471 files and directories currently installed.)
+Preparing to unpack rstudio-server-1.1.456-amd64.deb ...
+Unpacking rstudio-server (1.1.456) ...
+Setting up rstudio-server (1.1.456) ...
+groupadd: group 'rstudio-server' already exists
+rsession: no process found
+Created symlink /etc/systemd/system/multi-user.target.wants/rstudio-server.service → /etc/systemd/system/rstudio-server.service.
+● rstudio-server.service - RStudio Server
+   Loaded: loaded (/etc/systemd/system/rstudio-server.service; enabled; vendor preset: enabled)
+   Active: active (running) since Mon 2018-09-03 21:05:33 UTC; 1s ago
+  Process: 15034 ExecStart=/usr/lib/rstudio-server/bin/rserver (code=exited, status=0/SUCCESS)
+ Main PID: 15042 (rserver)
+    Tasks: 3 (limit: 1079)
+   CGroup: /system.slice/rstudio-server.service
+           ├─15042 /usr/lib/rstudio-server/bin/rserver
+           ├─15071 /bin/sh -c /usr/bin/R --slave --vanilla -e 'cat(R.Version()$major,R.Version()$minor, sep=".")'
+           └─15072 /usr/lib/R/bin/exec/R --slave --vanilla -e cat(R.Version()$major,R.Version()$minor,~+~sep=".")
+
+Sep 03 21:05:33 sfx-price systemd[1]: Starting RStudio Server...
+Sep 03 21:05:33 sfx-price systemd[1]: Started RStudio Server.
+
+
+# access the rstudio server
+<ip address>:8787
+23.99.228.114:8787
+# make sure to enable access to this port from your IP address on Azure VM
+
+

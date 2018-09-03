@@ -12,7 +12,7 @@ library(lubridate)
 db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
 
 # which environment - create the connection
-db_secret <- db_secret[db_secret$env == "dev", ]
+db_secret <- db_secret[db_secret$env == "prod", ]
 conn = DBI::dbConnect(odbc::odbc(),
                       Driver = "ODBC Driver 17 for SQL Server",
                       Server = db_secret$server,
@@ -47,12 +47,12 @@ db_insert_into_ASIN_Category <- function(p_conn, p_ASIN_id, p_ASIN, p_Cat1, p_Ca
     if(!is.null(p_Cat3)) {
         dbExecute(conn=p_conn, statement=
                       paste0(
-                          "INSERT INTO ASIN_Category (ASIN_id, ASIN, Category1, Category2, Category3)
+                          "INSERT INTO prod_ASIN_Category (ASIN_id, ASIN, Category1, Category2, Category3)
                 VALUES (", p_ASIN_id, ",'", p_ASIN, "','", p_Cat1, "','", p_Cat2, "','", p_Cat3, "');"))
     } else {
         dbExecute(conn=p_conn, statement=
                       paste0(
-                          "INSERT INTO ASIN_Category (ASIN_id, ASIN, Category1, Category2)
+                          "INSERT INTO prod_ASIN_Category (ASIN_id, ASIN, Category1, Category2)
                 VALUES (", p_ASIN_id, ",'", p_ASIN, "','", p_Cat1, "','", p_Cat2, "');"))
     }
 }
@@ -89,7 +89,7 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
     this_ASIN <- dbGetQuery(p_conn, 
         statement = paste0(
             "SELECT TOP 1 ASIN_id, ASIN
-            FROM ASIN
+            FROM prod_ASIN
             WHERE ASIN = '", p_ASIN, "';"))
     
     
@@ -98,7 +98,7 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
         this_ASIN_Category <- dbGetQuery(p_conn,
          statement = paste0(
              "SELECT *
-             FROM ASIN_Category
+             FROM prod_ASIN_Category
              WHERE ASIN_id = ", this_ASIN$ASIN_id, ";"))
         
         if(nrow(this_ASIN_Category)) {
@@ -135,14 +135,14 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
         # insert into ASIN
         dbExecute(p_conn, statement = 
             paste0(
-                "INSERT INTO ASIN (ASIN)
+                "INSERT INTO prod_ASIN (ASIN)
                 VALUES ('", p_ASIN, "');"))
         
         # query for the ASIN_id
         this_ASIN <- dbGetQuery(p_conn, 
             statement = paste0(
                 "SELECT TOP 1 ASIN_id, ASIN
-                FROM ASIN
+                FROM prod_ASIN
                 WHERE ASIN = '", p_ASIN, "';"))
         
         # insert into ASIN_Category:
@@ -158,6 +158,8 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
 
 
 # examples for how to call this function ------------------------------------------
+
+
     
     # # 1 B0719CBYXJ Guitar Pedal    Reverb      <NA>  
     # db_insert_new_ASIN(conn, "B0719CBYXJ", "Guitar Pedal", "Reverb")

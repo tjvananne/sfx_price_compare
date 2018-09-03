@@ -82,6 +82,48 @@ ASIN_ASIN_Category_join <- merge(
 
 
 
+
+# data_ASIN <- dbGetQuery(conn, "SELECT * FROM ASIN;")
+# data_ASIN_Category <- dbGetQuery(conn, "SELECT * FROM ASIN_Category;")
+
+# dbExecute(conn, "DROP TABLE dev_ASIN;")
+# dbExecute(conn, "DROP TABLE dev_ASIN_Category;")
+# dbExecute(conn, "DROP TABLE dev_Amz_Product;")
+# dbExecute(conn, "DROP TABLE dev_Amz_ListPrice;")
+
+
+# load prod ASIN / ASIN_Category
+# dbExecute(conn, "INSERT INTO prod_ASIN
+#                 SELECT ASIN FROM ASIN;")
+# 
+# dbExecute(conn, "INSERT INTO prod_ASIN_Category
+#                 SELECT ASIN_id, ASIN, Category1, Category2, Category3
+#                 FROM ASIN_Category;")
+
+# dbExecute(conn, "DELETE FROM prod_Amz_ListPrice;")
+# dbGetQuery(conn, "SELECT * FROM prod_Amz_ListPrice;")
+
+
+# copy prod down to dev
+dbWithTransaction(conn, code={
+    
+    # kill 
+    dbExecute(conn, "DELETE FROM dev_ASIN WHERE 1=1;")
+    dbExecute(conn, "DELETE FROM dev_ASIN_Category WHERE 1=1;")
+    
+    # and refill
+    dbExecute(conn, 
+        "INSERT INTO dev_ASIN
+        SELECT ASIN FROM prod_ASIN;")
+    dbExecute(conn,
+        "INSERT INTO dev_ASIN_Category
+        SELECT ASIN_id, ASIN, Category1, Category2, Category3
+        FROM prod_ASIN_Category;")
+})
+
+
+
+
 # NOTES -------------------------------------------------------------------------------
 
 #' you could add machine learning for tagging Category1 and Category2 values. I think

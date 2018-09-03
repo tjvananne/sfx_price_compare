@@ -5,6 +5,13 @@ library(odbc)
 library(DBI)
 
 
+# gotcha's --------------------------------------------------------
+
+#' 1. Insertion of "NULL" integers into database... basically just don't insert anything for that column
+#' 2. single quotes found within 
+
+
+
 # load in password info -------------------------------------------
     
     db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
