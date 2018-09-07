@@ -160,6 +160,12 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
 # examples for how to call this function ------------------------------------------
 
 
+    db_insert_new_ASIN(
+        p_conn      = conn, 
+        p_ASIN      = "B004T0LFMO",
+        p_Category1 = "Guitar Pedal",
+        p_Category2 = "Chorus")
+
     
     # # 1 B0719CBYXJ Guitar Pedal    Reverb      <NA>  
     # db_insert_new_ASIN(conn, "B0719CBYXJ", "Guitar Pedal", "Reverb")

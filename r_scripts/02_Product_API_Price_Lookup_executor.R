@@ -534,6 +534,7 @@ for(i in 1:nrow(tbl_ASIN)) {
             this_Amz_Product_data[Product_table_col_names[j]] <- NULL
         }
     }
+    rm(j) # we'll want to use this again for similar pre-processing later
     
     # if this ASIN is already in the Amz_Product table
     print("Updating product table...")
@@ -561,15 +562,36 @@ for(i in 1:nrow(tbl_ASIN)) {
             ListPrice       = ListPrice) %>%
         mutate(ListPrice_IsActive = 1)
     
+    # remove columns that have an NA value
+    ListPrice_table_col_names <- names(this_Amz_ListPrice_data)
+    for(j in 1:length(ListPrice_table_col_names)) {
+        # print(i)
+        if(is.na(this_Amz_ListPrice_data[ListPrice_table_col_names[j]])) {
+            this_Amz_ListPrice_data[ListPrice_table_col_names[j]] <- NULL
+        }
+    }
+    rm(j) # we'll want to use this again for similar pre-processing later
+    
     print("Updating the Amz_ListPrice table...")
     if(this_ASIN_id %in% tbl_Amz_ListPrice$ASIN_id) {
         # the ASIN_id exists already in the ListPrice table
         
         this_ListPrice <- tbl_Amz_ListPrice$ListPrice[tbl_Amz_ListPrice$ASIN_id == this_ASIN_id][[1]]
         
-        # if one is NA but the other isn't, something has changed. If prices aren't equal (!=), something has changed
-        something_changed <- xor(is.na(this_ListPrice),  is.na(as.integer(this_Amz_ListPrice_data$ListPrice)))
-        something_changed <- something_changed | (this_ListPrice != as.integer(this_Amz_ListPrice_data$ListPrice))
+        # either of these could be null: this_ListPrice, this_Amz_ListPrice_data$ListPrice
+        null_sum_ListPrice <- sum(is.null(this_ListPrice), is.null(this_Amz_ListPrice_data$ListPrice))
+        if(null_sum_ListPrice == 1) {
+            something_changed <- TRUE      # one is null and the other is not; something had to have changed
+        } else if(null_sum_ListPrice == 2) {
+            something_changed <- FALSE     # both are null so nothing has changed
+        } else if(null_sum_ListPrice == 0) {
+            # both are not null, so now test if something has changed
+            something_changed <- this_ListPrice != as.integer(this_Amz_ListPrice_data$ListPrice)
+            if(is.na(something_changed)) {
+                something_changed <- FALSE # shouldn't be NA here
+            }
+        }
+        
         if(something_changed) {
             # The price we got from the API is different than what is "Active" in the database table
             
@@ -586,14 +608,16 @@ for(i in 1:nrow(tbl_ASIN)) {
             # price hasn't changed, do nothing
             print("Price hasn't changed for this product, no insertion required...")
         }
-            
+        
+        rm(this_ListPrice)
+        
     } else {
         # the ASIN_id does not exist in this table, just do a simple insert.
         print("ListPrice record didn't exist, just insert a row...")
         dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
     
-    rm(this_ListPrice)
+    
     
     # now sleep
     sleep_dur <- round(runif(1, min=2, max=6), 2)

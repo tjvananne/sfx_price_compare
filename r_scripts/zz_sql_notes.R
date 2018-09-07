@@ -17,6 +17,9 @@ conn = DBI::dbConnect(odbc::odbc(),
                       Port = db_secret$port)
 
 
+
+
+
 # common constraints used for fields in a database:
 # NOT NULL
 # UNIQUE
@@ -25,8 +28,58 @@ conn = DBI::dbConnect(odbc::odbc(),
 # CHECK
 # DEFAULT
 
+# CHANGE LOG ----------------------------------------------
 
-ASIN_data <- dbGetQuery(conn, statement = "SELECT * FROM ASIN2;")
+# # 2018_09_07:
+# # prod_Amz_ListPrice.ListPrice should allow NULL values
+# dbExecute(conn, 
+#     "ALTER TABLE prod_Amz_ListPrice
+#     ALTER COLUMN ListPrice INT NULL")
+# 
+# dbExecute(conn, 
+#     "ALTER TABLE test_Amz_ListPrice
+#     ALTER COLUMN ListPrice INT NULL")
+# 
+# dbExecute(conn, 
+#     "ALTER TABLE dev_Amz_ListPrice
+#     ALTER COLUMN ListPrice INT NULL")
+
+
+
+
+# check Amz_ListPrice in prod
+prod_Amz_ListPrice <- dbGetQuery(conn, "SELECT * FROM dbo.prod_Amz_ListPrice ORDER BY ASIN, ListPrice_Effdt;")
+prod_Amz_ListPrice$ListPrice_IsActive <- as.integer(prod_Amz_ListPrice$ListPrice_IsActive)
+names(prod_Amz_ListPrice)
+
+
+# join
+prod_all <- dbGetQuery(conn, 
+    # Without the "WHERE" clause
+    "SELECT *
+    FROM prod_Amz_ListPrice
+    LEFT JOIN prod_Amz_Product on prod_Amz_ListPrice.ASIN_id = prod_Amz_Product.ASIN_id
+    LEFT JOIN prod_ASIN_Category on prod_Amz_ListPrice.ASIN_id = prod_ASIN_Category.ASIN_id
+    ORDER BY prod_Amz_ListPrice.ASIN, prod_Amz_ListPrice.ListPrice_Effdt
+    ;")
+                       
+    # # with the WHERE clause
+    # "SELECT * 
+    # FROM prod_Amz_ListPrice
+    # LEFT JOIN prod_Amz_Product on prod_Amz_ListPrice.ASIN_id = prod_Amz_Product.ASIN_id
+    # WHERE ListPrice_IsActive = 1
+    # ORDER BY ASIN, ListPrice_Effdt
+    # ;")
+
+
+
+# check ASIN and ASIN_Category in prod
+prod_ASIN <- dbGetQuery(conn, "SELECT * FROM dbo.prod_ASIN;")
+prod_ASIN_Category <- dbGetQuery(conn, "SELECT * FROM dbo.prod_ASIN_Category;")
+
+prod_Amz_Product <- dbGetQuery(conn, "SELECT * FROM dbo.prod_Amz_Product;")
+
+# ASIN_data <- dbGetQuery(conn, statement = "SELECT * FROM ASIN2;")
 # write.csv(ASIN_data, "ASIN_data_2018_09_02.csv", row.names = F)
 
 # drop a table

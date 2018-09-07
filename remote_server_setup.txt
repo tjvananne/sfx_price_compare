@@ -11,12 +11,16 @@ ssh taylor@23.99.228.114 -i ~/.ssh/id_rsa
 
 # copy to home directory of taylor@23.99.228.114
 scp -i ~/.ssh/id_rsa ./r-base-core_3.5.0-1bionic_amd64.deb taylor@23.99.228.114:~
-
+scp -rp -i ~/.ssh/id_rsa credentials/ taylor@$vmip:~/Documents/github_repos/sfx_price_compare/
 
 # running commands as taylor@23.99.228.114
 sudo apt update
 sudo apt upgrade
 sudo apt install gdebi
+sudo apt install gcc
+sudo apt install build-essential
+sudo apt install libblas-dev liblapack-dev
+sudo apt install gfortran
 
 
 # install rstudio server? - from https://www.rstudio.com/products/rstudio/download-server/

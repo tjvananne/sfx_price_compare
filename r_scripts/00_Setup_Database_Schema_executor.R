@@ -130,9 +130,8 @@ if(!GBL_tbl_name_Amz_ListPrice %in% db_list_tables(p_conn=conn, db_secret$databa
             ASIN_id INT NOT NULL CONSTRAINT ", GBL_env, "_FK_ASIN_id_ListPrice REFERENCES ", GBL_env, "_ASIN(ASIN_id),
             ASIN varchar(15),
             ListPrice_Effdt datetime2 NOT NULL,
-            ListPrice INT NOT NULL,
+            ListPrice INT,
             ListPrice_IsActive BIT NOT NULL DEFAULT 1);"))
-    
 }
 
 
