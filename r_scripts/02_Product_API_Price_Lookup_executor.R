@@ -489,7 +489,7 @@ tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM prod_Amz_Li
 
 
             # AD HOC DOWN SAMPLE TO TARGET SPECIFIC PROBLEM CHILDREN ASINs;
-tbl_ASIN <- tbl_ASIN[tbl_ASIN$ASIN_id %in% (tbl_Amz_ListPrice$ASIN_id[is.na(tbl_Amz_ListPrice$ListPrice)]),]
+# tbl_ASIN <- tbl_ASIN[tbl_ASIN$ASIN_id %in% (tbl_Amz_ListPrice$ASIN_id[is.na(tbl_Amz_ListPrice$ListPrice)]),]
 
 
 
