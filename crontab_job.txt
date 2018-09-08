@@ -1,0 +1,5 @@
+
+# This is the entry in the remote server for running the script. I have this defaulted to run every 6 hours, on the hour. My VM is on UTC time.
+
+
+0 */6 * * * Rscript ~/Documents/github_repos/sfx_price_compare/r_scripts/02_Product_API_Price_Lookup_prod-shell.R; date >> ~/Documents/github_repos/sfx_price_compare_cronjob_last_run.txt

@@ -9,15 +9,26 @@ library(dplyr)
 library(odbc)
 library(DBI)
 library(lubridate)
+library(futile.logger)  # TODO: add logging capability so we have more insight into jobs run on remote server
 
 
 
+# notes / next steps ----------------------------------------------
 
-# load in password info -------------------------------------------
+# I need to make test cases for any data I believe the Amazon API is 
+# capable of returning to me. I'd like for these test cases to mimic
+# really using the Amazon API, but not actually make calls to it or
+# rely on the web at all. I would also like for these tests to not 
+# rely on the database being up and running as well. The tests will
+# be developed with the knowledge of what pain points look like between
+# R and SQL Server, but will be developed in a way that looks like
+# the "plugin" architecture.
+
+
+# load in db and amazon credentials ------------------------------
     
 amz_secret   <- read.csv("credentials/amz_secret.csv", stringsAsFactors = F)    
 db_secret    <- read.csv("credentials/db_secret.csv", stringsAsFactors = F)
-
 
 source("r_scripts/lib_name_db_tables_by_env.R")
 
@@ -33,12 +44,11 @@ conn = DBI::dbConnect(odbc::odbc(),
                       Port = db_secret$port)
 
 
-# adhoc dev of future database functions
-
-
-    
     
 # Helper functions ------------------------------------------------
+
+# these helper functions are primarily for logic to be used inside
+# of the calls to the amazon api.
 
 # helper timestamp function
 generate_utc_timestamp_ <- function(ts) {
@@ -90,7 +100,9 @@ time_since_epoch <- function() {
     
 # Amazon functions ---------------------------
     
-
+# I've split the responsibility of requesting data and
+# parsing the response of that request into two separate
+# functions. 
 
 # build and send request to amz api for product searching - default keyword is "guitar pedal"
 amz_itemlookup_request <- function(p_access_key, p_secret, p_associatetag, p_ASIN, p_responsegrp="ItemAttributes",
@@ -328,111 +340,6 @@ db_sql_append_table <- function(p_df, p_tbl) {
 }
 
 
-
-db_list_tables <- function(p_conn, p_database) {
-    # p_conn: odbc connection to the database (per DBI)
-    # p_database: name of the database to list the tables from (db_secret$database)
-    # returns: character vector of the names of the database tables in this database
-    
-    # come back and test this once there are multiple databases in this instance that
-    # have tables with the same name... I don't think I need the p_database arg for this function.
-    
-    tables <- dbGetQuery(p_conn, "SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE';")
-    tables <- tables[tables$TABLE_CATALOG == p_database, ]
-    return(tables$TABLE_NAME)
-}
-# db_list_tables(p_conn=conn, p_database=db_secret$database)    
-
-
-
-# # we now have a flag for "active" - this query isn't necessary
-# # query for asin database function
-# db_query_most_recent_by_id <- function(p_conn, p_id, p_id_value, p_date, p_tbl, p_verbose=T) {
-#     # p_conn: connection to the database
-#     # p_id: the name of the id we're grouping by to find max date
-#     # p_id_value: id (asin) number we want to look up in the database
-#     # p_date: date (or epoch timestamp) we want to use in order to pull most recent data for this id
-#     # p_tbl: database table we're querying
-#     
-#     # note: this query was designed with MySQL in mind
-#     
-#     # query: given a unique identifier (ASIN), give me the most recent record for that id
-#     # this is what we'll use to compare to the price coming straight from the API
-#     sql_statement <- sprintf(
-#     "SELECT *
-#      FROM %s tbl1
-#         JOIN (
-#         SELECT %s, MAX(%s) as %s
-#         FROM %s
-#         WHERE %s = '%s' 
-#         GROUP BY %s) AS tbl2
-#         ON tbl1.%s = tbl2.%s AND tbl1.%s = tbl2.%s;",
-#     p_tbl, p_id, p_date, p_date, p_tbl, p_id, p_id_value, p_id, p_id, p_id, p_date, p_date)
-#     
-#     # print out the statement
-#     if(p_verbose) {
-#         print("SQL Statement:")
-#         print(sql_statement)
-#     }
-#     
-#     # execute query
-#     this_result <- DBI::dbGetQuery(conn=p_conn, statement = sql_statement)
-#     return(this_result)
-# }
-
-    # # unit test
-    # db_query_most_recent_by_id(
-    #     p_conn     = conn,
-    #     p_id       = "ASIN",
-    #     p_id_value = "B01MG0733A",
-    #     p_date     = "EffTimestampUTC",
-    #     p_tbl      = "gpu_price")
-
-
-
-# compare values in dataframe to see if we need to insert row into db
-check_if_df_vals_changed <- function(p_df1, p_df2, p_cols) {
-    # p_df1: first data frame that we want to compare values
-    # p_df2: second data frame that we want to compare values
-    # p_cols: names of the columns that we want to compare in df1 and df2
-    
-    # browser()
-    # note, this is designed for single-row data.frames
-    if(nrow(p_df1) > 1 | nrow(p_df2) > 1) {stop("single-row dfs only")}
-    
-    # set up some space for the logicals
-    bool_vector <- vector(mode = "logical", length = length(p_cols))
-    
-    # loop through each column name and compare the values
-    for(i in 1:length(p_cols)) {
-        this_col <- p_cols[i]
-        # if they are both NA, then it should be false
-        if(is.na(p_df1[1, this_col]) & is.na(p_df2[1, this_col])) {
-            bool_vector[i] <- FALSE
-        } else {
-            bool_vector[i] <- p_df1[1, this_col] != p_df2[1, this_col]
-        }
-    }
-    
-    # this means it either was NA and now isn't, or it wasn't NA and now it is
-    bool_vector[is.na(bool_vector)] <- TRUE
-    return(any(bool_vector))
-}
-    
-    # # unit test
-    # df1 <- data.frame(a = c(1), b = c("4"), stringsAsFactors = F)
-    # df2 <- data.frame(a = c(1), b = c("4"), stringsAsFactors = F)
-    # df3 <- data.frame(a = c(9), b = c("4"), stringsAsFactors = F)
-    # df4 <- data.frame(a = NA, b = c(NA), stringsAsFactors = F)
-    # 
-    # is.na(df4[1, 'a'])  # this is true
-    # check_if_df_vals_changed(df1, df3, c("a", "b"))
-    # check_if_df_vals_changed(df1, df4, c("a", "b"))
-    
-
-
-
-
 # Execution Notes ------------------------------------------------------------------------
     
 #' Steps
@@ -495,15 +402,15 @@ tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM prod_Amz_Li
 
 # begin the loop here to pass ASINs into the Amz API, compare with existing active records, and update as necessary
 for(i in 1:nrow(tbl_ASIN)) {
-    
-    
     print(paste0("--------------->  ", i, "  <---------------"))
+    
     
     # isolate ASIN and ASIN_id for this request
     this_ASIN      <- tbl_ASIN$ASIN[i]
     this_ASIN_id   <- tbl_ASIN$ASIN_id[i]
     this_DateTime2 <- lubridate::now() 
 
+    
     # request and parse data
     print("Querying Amazon API for fresh data...")
     this_ASIN_API_data <- amz_itemlookup_request(
@@ -533,22 +440,23 @@ for(i in 1:nrow(tbl_ASIN)) {
             Product_TypeName = ProductTypeName,
             Product_UPC = UPC) 
     
-    # remove columns that have an NA value
+    # remove columns that have an NA value - this is how to "insert a NULL" into sql server
     Product_table_col_names <- names(this_Amz_Product_data)
     for(j in 1:length(Product_table_col_names)) {
         # print(i)
         if(is.na(this_Amz_Product_data[Product_table_col_names[j]])) {
             this_Amz_Product_data[Product_table_col_names[j]] <- NULL
         }
-    }
-    rm(j) # we'll want to use this again for similar pre-processing later
+    }; rm(j) 
+    
+    
     
     # if this ASIN is already in the Amz_Product table
-    print("Updating product table...")
     if(this_ASIN_id %in% tbl_Amz_Product$ASIN_id) {
         
         # in transaction: then delete the row and insert again with fresh data from API
         # this is not slowly changing dimension, this is an overwriting dimension
+        print("Executing Product table kill-and-fill for this ASIN...")
         dbWithTransaction(conn, code = {
             dbExecute(conn, statement = paste0("DELETE FROM ", GBL_tbl_name_Amz_Product, " WHERE ASIN_id = ", this_ASIN_id, ";"))
             dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, GBL_tbl_name_Amz_Product))
@@ -556,11 +464,14 @@ for(i in 1:nrow(tbl_ASIN)) {
     } else {
         
         # if this ASIN_id isn't already in the data, then just insert
+        print("ASIN wasn't found in product table, inserting it now...")
         dbExecute(conn, statement = db_sql_append_table(this_Amz_Product_data, GBL_tbl_name_Amz_Product))
     }
     
     # Amz_ListPrice logic ----------------------------------------------------------------
     
+    
+    # convert the data from Amz API to what our database table expects
     this_Amz_ListPrice_data <- this_ASIN_API_data %>%
         select(
             ASIN_id,
@@ -569,6 +480,7 @@ for(i in 1:nrow(tbl_ASIN)) {
             ListPrice       = ListPrice) %>%
         mutate(ListPrice_IsActive = 1)
     
+    
     # remove columns that have an NA value
     ListPrice_table_col_names <- names(this_Amz_ListPrice_data)
     for(j in 1:length(ListPrice_table_col_names)) {
@@ -576,21 +488,25 @@ for(i in 1:nrow(tbl_ASIN)) {
         if(is.na(this_Amz_ListPrice_data[ListPrice_table_col_names[j]])) {
             this_Amz_ListPrice_data[ListPrice_table_col_names[j]] <- NULL
         }
-    }
-    rm(j) # we'll want to use this again for similar pre-processing later
+    }; rm(j)
     
-    print("Updating the Amz_ListPrice table...")
+    
+    
     if(this_ASIN_id %in% tbl_Amz_ListPrice$ASIN_id) {
         # the ASIN_id exists already in the ListPrice table
         
-        # this_ListPrice can be NA but not NULL
+        
+        # this_ListPrice can be NA but not NULL (NULLs can't exist in "cell" of R data.frame)
         this_ListPrice <- tbl_Amz_ListPrice$ListPrice[tbl_Amz_ListPrice$ASIN_id == this_ASIN_id][[1]]
+        
+        
         
         # if both are missing, nothing changed. If one is missing, something changed. 
         # if neither are missing, then compare the values to see if something changed.
         # Note: this_ListPrice comes from R querying SQL so it has NA instead of Null. 
         #       but this_Amz_ListPrice_data$ListPrice is NULL because we removed all
         #       columns that had NA values above. j was the index for that loop.
+        print("ASIN already exists in Amz_ListPrice table - checking if price changed since last request...")
         count_missing_ListPrice <- sum(is.na(this_ListPrice), is.null(this_Amz_ListPrice_data$ListPrice))
         if(count_missing_ListPrice == 1) {
             something_changed <- TRUE      
@@ -601,8 +517,10 @@ for(i in 1:nrow(tbl_ASIN)) {
         }
         
         
+        
         if(something_changed) {
             # The price we got from the API is different than what is "Active" in the database table
+            print("Price has changed, setting old active record to inactive, inserting this new record...")
             dbWithTransaction(conn, code = {
                 dbExecute(conn, statement = 
                     paste0(
@@ -612,12 +530,18 @@ for(i in 1:nrow(tbl_ASIN)) {
                 dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
             })
             
+            
+            
         } else {
-            # price hasn't changed, do nothing
             print("Price hasn't changed for this product, no insertion required...")
         }
         
+        
+        
+        # don't want this_ListPrice to have a chance to be defined for other loop iterations
         rm(this_ListPrice)
+        
+        
         
     } else {
         # the ASIN_id does not exist in this table, just do a simple insert.
@@ -625,7 +549,9 @@ for(i in 1:nrow(tbl_ASIN)) {
         dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
     
-    # now sleep
+    
+    
+    # now sleep for a random amount of time between 2-6 seconds
     sleep_dur <- round(runif(1, min=2, max=6), 2)
     print(paste0("Done. Sleeping for ", sleep_dur, " seconds..."))
     Sys.sleep(sleep_dur)
