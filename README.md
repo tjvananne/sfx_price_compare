@@ -5,7 +5,7 @@ price scraper. using amazon product advertising API. storing in type-2 slowly ch
 ## entity diagram for persistent storage
 
 
-![entity diagram](https://github.com/tjvananne/sfx_price_compare/static_assets/Entity_Diagram-min.jpg)
+![entity diagram](static_assets/Entity_Diagram-min.jpg)
 
 
 * **ASIN** - this is the record holder for which ASIN are being tracked in this app
