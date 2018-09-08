@@ -269,7 +269,7 @@ db_sql_append_table <- function(p_df, p_tbl) {
     # remove any single quotes within the content of character fields
     p_df_col_names <- names(p_df)
     for(i in 1:length(p_df_col_names)) {
-        if(class(p_df[[p_df_col_names[i]]]) %in% c("character")) {
+        if(class(p_df[[p_df_col_names[i]]])[[1]] %in% c("character")) {
             p_df[p_df_col_names[i]] <- gsub("'", "", p_df[p_df_col_names[i]])
         } 
     }
@@ -480,11 +480,18 @@ tbl_Amz_Product <- dbGetQuery(conn = conn, statement = paste0("SELECT * FROM ", 
     
 # query the Amz_ListPrice table for all active records (will be blank first time)
 tbl_Amz_ListPrice <- dbGetQuery(conn = conn, statement = 
-                     paste0(
-                        "SELECT * FROM ", GBL_tbl_name_Amz_ListPrice,  
-                        " WHERE ListPrice_IsActive = 1;"))
+    paste0(
+        "SELECT * FROM ", GBL_tbl_name_Amz_ListPrice,  
+        " WHERE ListPrice_IsActive = 1;"))
 
-# tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM Amz_ListPrice;")
+tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM prod_Amz_ListPrice;") %>%
+    arrange(ASIN_id, ListPrice_Effdt)
+
+
+            # AD HOC DOWN SAMPLE TO TARGET SPECIFIC PROBLEM CHILDREN ASINs;
+tbl_ASIN <- tbl_ASIN[tbl_ASIN$ASIN_id %in% (tbl_Amz_ListPrice$ASIN_id[is.na(tbl_Amz_ListPrice$ListPrice)]),]
+
+
 
 # begin the loop here to pass ASINs into the Amz API, compare with existing active records, and update as necessary
 for(i in 1:nrow(tbl_ASIN)) {
@@ -576,25 +583,26 @@ for(i in 1:nrow(tbl_ASIN)) {
     if(this_ASIN_id %in% tbl_Amz_ListPrice$ASIN_id) {
         # the ASIN_id exists already in the ListPrice table
         
+        # this_ListPrice can be NA but not NULL
         this_ListPrice <- tbl_Amz_ListPrice$ListPrice[tbl_Amz_ListPrice$ASIN_id == this_ASIN_id][[1]]
         
-        # either of these could be null: this_ListPrice, this_Amz_ListPrice_data$ListPrice
-        null_sum_ListPrice <- sum(is.null(this_ListPrice), is.null(this_Amz_ListPrice_data$ListPrice))
-        if(null_sum_ListPrice == 1) {
-            something_changed <- TRUE      # one is null and the other is not; something had to have changed
-        } else if(null_sum_ListPrice == 2) {
-            something_changed <- FALSE     # both are null so nothing has changed
-        } else if(null_sum_ListPrice == 0) {
-            # both are not null, so now test if something has changed
-            something_changed <- this_ListPrice != as.integer(this_Amz_ListPrice_data$ListPrice)
-            if(is.na(something_changed)) {
-                something_changed <- FALSE # shouldn't be NA here
-            }
+        # if both are missing, nothing changed. If one is missing, something changed. 
+        # if neither are missing, then compare the values to see if something changed.
+        # Note: this_ListPrice comes from R querying SQL so it has NA instead of Null. 
+        #       but this_Amz_ListPrice_data$ListPrice is NULL because we removed all
+        #       columns that had NA values above. j was the index for that loop.
+        count_missing_ListPrice <- sum(is.na(this_ListPrice), is.null(this_Amz_ListPrice_data$ListPrice))
+        if(count_missing_ListPrice == 1) {
+            something_changed <- TRUE      
+        } else if(count_missing_ListPrice == 2) {
+            something_changed <- FALSE     
+        } else if(count_missing_ListPrice == 0) {
+            something_changed <- as.integer(this_ListPrice) != as.integer(this_Amz_ListPrice_data$ListPrice)
         }
+        
         
         if(something_changed) {
             # The price we got from the API is different than what is "Active" in the database table
-            
             dbWithTransaction(conn, code = {
                 dbExecute(conn, statement = 
                     paste0(
@@ -616,8 +624,6 @@ for(i in 1:nrow(tbl_ASIN)) {
         print("ListPrice record didn't exist, just insert a row...")
         dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
-    
-    
     
     # now sleep
     sleep_dur <- round(runif(1, min=2, max=6), 2)

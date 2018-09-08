@@ -45,6 +45,10 @@ conn = DBI::dbConnect(odbc::odbc(),
 #     ALTER COLUMN ListPrice INT NULL")
 
 
+dbGetQuery(conn, 
+    "SELECT * FROM dbo.prod_Amz_ListPrice
+     WHERE ListPrice IS NULL AND ListPrice_IsActive = 0;")# and ListPrice_IsActive == FALSE;")
+
 
 
 # check Amz_ListPrice in prod
@@ -161,18 +165,26 @@ ASIN_ASIN_Category_join <- merge(
 dbWithTransaction(conn, code={
     
     # kill 
-    dbExecute(conn, "DELETE FROM dev_ASIN WHERE 1=1;")
     dbExecute(conn, "DELETE FROM dev_ASIN_Category WHERE 1=1;")
+    dbExecute(conn, "DELETE FROM dev_ASIN WHERE 1=1;")
+    
+    dbExecute(conn, "SET IDENTITY_INSERT dbo.dev_ASIN ON;")
     
     # and refill
     dbExecute(conn, 
-        "INSERT INTO dev_ASIN
-        SELECT ASIN FROM prod_ASIN;")
+        "INSERT INTO dbo.dev_ASIN (ASIN_id, ASIN)
+        SELECT 
+            ASIN_id, 
+            ASIN 
+        FROM prod_ASIN;")
     dbExecute(conn,
         "INSERT INTO dev_ASIN_Category
         SELECT ASIN_id, ASIN, Category1, Category2, Category3
         FROM prod_ASIN_Category;")
 })
+
+
+# there is an ASIN_id in dev_ASIN_Category that does not exist in 
 
 
 
