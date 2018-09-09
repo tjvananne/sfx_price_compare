@@ -1,7 +1,7 @@
 
 
-
-library(base64enc)  # for signing amazon api requests
+Sys.setenv(TZ='GMT') # always set timezone to GMT/UTC
+library(base64enc)   # for signing amazon api requests
 library(RCurl)
 library(digest)
 library(XML)
@@ -9,8 +9,79 @@ library(dplyr)
 library(odbc)
 library(DBI)
 library(lubridate)
-library(futile.logger)  # TODO: add logging capability so we have more insight into jobs run on remote server
 
+
+# Helper functions ------------------------------------------------
+
+# these helper functions are primarily for logic to be used inside
+# of the calls to the amazon api.
+
+# helper timestamp function
+generate_utc_timestamp_ <- function(ts) {
+    # x1: timestamp in current system timezone
+    # x2: format with tz argument changes the timezone to GMT/UTC
+    # x3: lubridate objects are easier to work with and manipulate
+    x1 <- as.POSIXct(ts)
+    x2 <- format(x1, tz = "GMT", usetz = F)
+    x3 <- lubridate::ymd_hms(x2)
+    
+    # reformat the string manually (kinda sloppy, but lots of control)
+    return(paste0(
+        sprintf("%04d", lubridate::year(x3)),   '-', 
+        sprintf("%02d", lubridate::month(x3)),  '-',
+        sprintf("%02d", lubridate::day(x3)),    'T', 
+        sprintf("%02d", lubridate::hour(x3)),   ':',
+        sprintf("%02d", lubridate::minute(x3)), ':', 
+        sprintf("%02d", lubridate::second(x3)), 'Z'))
+}
+
+# # Unit tests:
+# # pass in "Sys.time()" format time stamp
+# # output is compatible with lubridate's ymd_hms
+# Runit_test <- generate_utc_timestamp_(Sys.time())
+# lubridate::ymd_hms(generate_utc_timestamp_(Sys.time()))
+
+
+
+# is this inefficient?
+time_since_epoch <- function() {
+    library(lubridate)
+    x1 <- as.POSIXct(Sys.time())
+    x2 <- format(x1, tz="GMT", usetz=F)
+    x3 <- lubridate::ymd_hms(x2)
+    epoch <- lubridate::ymd_hms('1970-01-01 00:00:00')
+    time_since_epoch <- (x3 - epoch) / dseconds()
+    return(time_since_epoch)
+}
+
+# # Unit tests:
+# # returns seconds since epoch (midnight 1-1-1970)
+# # function is not efficient, but we're only 
+# # interested in accuracy/reliability, not efficiency
+# time_since_epoch()
+
+
+
+# set up logging -------------------------------------------------
+
+# set up log file name and full log file path
+log_file <- paste0(lubridate::today(), "_", GBL_env, "_02_Price_Lookup.log")
+log_fp   <- file.path("logs", log_file)
+if(!dir.exists("logs")) {dir.create("logs")}
+if(!file.exists(log_fp)) {cat("timestamp,log_threshold,message,value\n", file = log_fp, append = F)}
+
+write_to_log <- function(p_log_fp, p_threshold, p_message, p_value="-") {
+    ts <- generate_utc_timestamp_(Sys.time())
+    # # for dev
+    # p_threshold <- "INFO"
+    # p_message   <- "things happened"
+    # p_value     <- "-"
+    log_content <- paste0(paste(ts, p_threshold, p_message, p_value, sep=","), "\n")
+    cat(log_content, file = p_log_fp, append=T)
+}
+
+# # example for how to call this function
+# write_to_log(log_fp, "INFO", "Things happened...")
 
 
 # notes / next steps ----------------------------------------------
@@ -45,59 +116,7 @@ conn = DBI::dbConnect(odbc::odbc(),
 
 
     
-# Helper functions ------------------------------------------------
 
-# these helper functions are primarily for logic to be used inside
-# of the calls to the amazon api.
-
-# helper timestamp function
-generate_utc_timestamp_ <- function(ts) {
-    # x1: timestamp in current system timezone
-    # x2: format with tz argument changes the timezone to GMT/UTC
-    # x3: lubridate objects are easier to work with and manipulate
-    x1 <- as.POSIXct(ts)
-    x2 <- format(x1, tz = "GMT", usetz = F)
-    x3 <- lubridate::ymd_hms(x2)
-    
-    # reformat the string manually (kinda sloppy, but lots of control)
-    return(paste0(
-        sprintf("%04d", lubridate::year(x3)),   '-', 
-        sprintf("%02d", lubridate::month(x3)),  '-',
-        sprintf("%02d", lubridate::day(x3)),    'T', 
-        sprintf("%02d", lubridate::hour(x3)),   ':',
-        sprintf("%02d", lubridate::minute(x3)), ':', 
-        sprintf("%02d", lubridate::second(x3)), 'Z'))
-}
-
-    # # Unit tests:
-    # # pass in "Sys.time()" format time stamp
-    # # output is compatible with lubridate's ymd_hms
-    # Runit_test <- generate_utc_timestamp_(Sys.time())
-    # lubridate::ymd_hms(generate_utc_timestamp_(Sys.time()))
-
-
-
-# is this inefficient?
-time_since_epoch <- function() {
-    library(lubridate)
-    x1 <- as.POSIXct(Sys.time())
-    x2 <- format(x1, tz="GMT", usetz=F)
-    x3 <- lubridate::ymd_hms(x2)
-    epoch <- lubridate::ymd_hms('1970-01-01 00:00:00')
-    time_since_epoch <- (x3 - epoch) / dseconds()
-    return(time_since_epoch)
-}
-
-    # # Unit tests:
-    # # returns seconds since epoch (midnight 1-1-1970)
-    # # function is not efficient, but we're only 
-    # # interested in accuracy/reliability, not efficiency
-    # time_since_epoch()
-
-
-
-
-    
 # Amazon functions ---------------------------
     
 # I've split the responsibility of requesting data and
@@ -376,7 +395,9 @@ db_sql_append_table <- function(p_df, p_tbl) {
 
 # this giant for loop is mildly ridiculous. let's think about breaking this into smaller
 # functions for easier testing.
-    
+start_time <- generate_utc_timestamp_(Sys.time())
+write_to_log(log_fp, "INFO", "Starting new run", start_time)
+
         
 # query the ASIN table
 tbl_ASIN <- dbGetQuery(conn = conn, statement = paste0("SELECT * FROM ", GBL_tbl_name_ASIN, ";"))
@@ -398,6 +419,11 @@ tbl_Amz_ListPrice_all <- dbGetQuery(conn, statement = "SELECT * FROM prod_Amz_Li
             # AD HOC DOWN SAMPLE TO TARGET SPECIFIC PROBLEM CHILDREN ASINs;
 # tbl_ASIN <- tbl_ASIN[tbl_ASIN$ASIN_id %in% (tbl_Amz_ListPrice$ASIN_id[is.na(tbl_Amz_ListPrice$ListPrice)]),]
 
+
+# value collectors for logging
+collector_price_changes    <- 0
+collector_price_same       <- 0
+collector_price_new_insert <- 0
 
 
 # begin the loop here to pass ASINs into the Amz API, compare with existing active records, and update as necessary
@@ -521,6 +547,7 @@ for(i in 1:nrow(tbl_ASIN)) {
         if(something_changed) {
             # The price we got from the API is different than what is "Active" in the database table
             print("Price has changed, setting old active record to inactive, inserting this new record...")
+            collector_price_changes <- collector_price_changes + 1 
             dbWithTransaction(conn, code = {
                 dbExecute(conn, statement = 
                     paste0(
@@ -534,6 +561,7 @@ for(i in 1:nrow(tbl_ASIN)) {
             
         } else {
             print("Price hasn't changed for this product, no insertion required...")
+            collector_price_same <- collector_price_same + 1 
         }
         
         
@@ -546,6 +574,7 @@ for(i in 1:nrow(tbl_ASIN)) {
     } else {
         # the ASIN_id does not exist in this table, just do a simple insert.
         print("ListPrice record didn't exist, just insert a row...")
+        collector_price_new_insert <- collector_price_new_insert + 1
         dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
     
@@ -556,5 +585,11 @@ for(i in 1:nrow(tbl_ASIN)) {
     print(paste0("Done. Sleeping for ", sleep_dur, " seconds..."))
     Sys.sleep(sleep_dur)
 }
+
+write_to_log(log_fp, "INFO", "This Job Price Changes", collector_price_changes)
+write_to_log(log_fp, "INFO", "This Job Price Same", collector_price_same)
+write_to_log(log_fp, "INFO", "This Job New Price Inserts", collector_price_new_insert)
+
+write_to_log(log_fp, "INFO", "Successfully completed job that started at: ", start_time)
 
     
