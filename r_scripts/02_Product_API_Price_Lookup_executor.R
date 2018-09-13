@@ -10,6 +10,17 @@ library(odbc)
 library(DBI)
 library(lubridate)
 
+# notes / next steps ----------------------------------------------
+
+# I need to make test cases for any data I believe the Amazon API is 
+# capable of returning to me. I'd like for these test cases to mimic
+# really using the Amazon API, but not actually make calls to it or
+# rely on the web at all. I would also like for these tests to not 
+# rely on the database being up and running as well. The tests will
+# be developed with the knowledge of what pain points look like between
+# R and SQL Server, but will be developed in a way that looks like
+# the "plugin" architecture.
+
 
 # Helper functions ------------------------------------------------
 
@@ -83,17 +94,6 @@ write_to_log <- function(p_log_fp, p_threshold, p_message, p_value="-") {
 # # example for how to call this function
 # write_to_log(log_fp, "INFO", "Things happened...")
 
-
-# notes / next steps ----------------------------------------------
-
-# I need to make test cases for any data I believe the Amazon API is 
-# capable of returning to me. I'd like for these test cases to mimic
-# really using the Amazon API, but not actually make calls to it or
-# rely on the web at all. I would also like for these tests to not 
-# rely on the database being up and running as well. The tests will
-# be developed with the knowledge of what pain points look like between
-# R and SQL Server, but will be developed in a way that looks like
-# the "plugin" architecture.
 
 
 # load in db and amazon credentials ------------------------------
@@ -556,20 +556,13 @@ for(i in 1:nrow(tbl_ASIN)) {
                         WHERE ASIN_id = ", this_ASIN_id, ";"))
                 dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
             })
-            
-            
-            
         } else {
             print("Price hasn't changed for this product, no insertion required...")
             collector_price_same <- collector_price_same + 1 
         }
         
-        
-        
         # don't want this_ListPrice to have a chance to be defined for other loop iterations
         rm(this_ListPrice)
-        
-        
         
     } else {
         # the ASIN_id does not exist in this table, just do a simple insert.
@@ -578,13 +571,12 @@ for(i in 1:nrow(tbl_ASIN)) {
         dbExecute(conn, statement = db_sql_append_table(p_df = this_Amz_ListPrice_data, p_tbl = GBL_tbl_name_Amz_ListPrice))
     }
     
-    
-    
     # now sleep for a random amount of time between 2-6 seconds
     sleep_dur <- round(runif(1, min=2, max=6), 2)
     print(paste0("Done. Sleeping for ", sleep_dur, " seconds..."))
     Sys.sleep(sleep_dur)
 }
+
 
 write_to_log(log_fp, "INFO", "This Job Price Changes", collector_price_changes)
 write_to_log(log_fp, "INFO", "This Job Price Same", collector_price_same)

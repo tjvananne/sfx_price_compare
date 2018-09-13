@@ -162,9 +162,9 @@ db_insert_new_ASIN <- function(p_conn, p_ASIN, p_Category1, p_Category2, p_Categ
 
     db_insert_new_ASIN(
         p_conn      = conn, 
-        p_ASIN      = "B004T0LFMO",
+        p_ASIN      = "B00E4WUU32",
         p_Category1 = "Guitar Pedal",
-        p_Category2 = "Chorus")
+        p_Category2 = "Overdrive")
 
     
     # # 1 B0719CBYXJ Guitar Pedal    Reverb      <NA>  

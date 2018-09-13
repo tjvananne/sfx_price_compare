@@ -54,18 +54,46 @@ dbGetQuery(conn,
 # check Amz_ListPrice in prod
 prod_Amz_ListPrice <- dbGetQuery(conn, "SELECT * FROM dbo.prod_Amz_ListPrice ORDER BY ASIN, ListPrice_Effdt;")
 prod_Amz_ListPrice$ListPrice_IsActive <- as.integer(prod_Amz_ListPrice$ListPrice_IsActive)
+prod_Amz_Product <- dbGetQuery(conn, "SELECT * FROM dbo.prod_Amz_Product;")
+
+prod_all <- merge(
+    x = prod_Amz_ListPrice,
+    y = prod_Amz_Product,
+    by = c("ASIN_id"),
+    all.x = T,
+    all.y = T)
+
+
+# highest "ASIN_count" should be 1... 2 is an issue
+prod_all %>%
+    select(ASIN_id, ASIN) %>%
+    group_by(ASIN_id) %>%
+    summarise(ASIN_count = n_distinct(ASIN)) %>%
+    arrange(desc(ASIN_count))
+
+
+
 names(prod_Amz_ListPrice)
 
+# adhoc some stuff to see distribution of product price changes
+library(dplyr)
+x = prod_all %>% 
+    group_by(ASIN) %>%
+    summarise(count = n()) %>%
+    arrange(desc(count))
+hist(x$count, col = 'light blue', breaks = 30)
 
-# join
-prod_all <- dbGetQuery(conn, 
-    # Without the "WHERE" clause
-    "SELECT *
-    FROM prod_Amz_ListPrice
-    LEFT JOIN prod_Amz_Product on prod_Amz_ListPrice.ASIN_id = prod_Amz_Product.ASIN_id
-    LEFT JOIN prod_ASIN_Category on prod_Amz_ListPrice.ASIN_id = prod_ASIN_Category.ASIN_id
-    ORDER BY prod_Amz_ListPrice.ASIN, prod_Amz_ListPrice.ListPrice_Effdt
-    ;")
+
+
+    # # join
+    # prod_all <- dbGetQuery(conn, 
+    #     # Without the "WHERE" clause
+    #     "SELECT *
+    #     FROM prod_Amz_ListPrice
+    #     LEFT JOIN prod_Amz_Product on prod_Amz_ListPrice.ASIN_id = prod_Amz_Product.ASIN_id
+    #     LEFT JOIN prod_ASIN_Category on prod_Amz_ListPrice.ASIN_id = prod_ASIN_Category.ASIN_id
+    #     ORDER BY pr   od_Amz_ListPrice.ASIN, prod_Amz_ListPrice.ListPrice_Effdt
+    #     ;")
                        
     # # with the WHERE clause
     # "SELECT * 
@@ -74,6 +102,27 @@ prod_all <- dbGetQuery(conn,
     # WHERE ListPrice_IsActive = 1
     # ORDER BY ASIN, ListPrice_Effdt
     # ;")
+
+
+library(ggplot2)
+
+prod_all_this <- prod_all %>%
+    filter(ASIN == "B079G8VM8C") %>%
+    mutate(ListPrice = ListPrice/100)
+
+prod_all_this_min <- min(prod_all_this$ListPrice, na.rm=T)
+prod_all_this_max <- max(prod_all_this$ListPrice, na.rm=T)
+
+
+prod_all_this %>%
+    ggplot(aes(x = ListPrice_Effdt, y=ListPrice)) +
+    geom_step(size=1, col=rgb(.7, .2, .2)) +
+    theme_bw(base_size=13) +
+    theme(panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank()) +
+    #ylim(min(prod_all$ListPrice, na.rm=T) - (min(prod_all$ListPrice, na.rm=T) * .8), (max(prod_all$ListPrice, na.rm=T))) +
+    ylim(prod_all_this_min * .98, prod_all_this_max * 1.01) +
+    ggtitle(paste0("Price over Time for: ", prod_all$ASIN[[1]]), prod_all$Product_Title[[1]])
 
 
 
